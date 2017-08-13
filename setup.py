@@ -15,7 +15,7 @@ setup(
     author='tjado',
     description='Pokemon Go API lib',
     version='1.2.0',
-    url='https://github.com/pogodevorg/pgoapi',
-    download_url="https://github.com/pogodevorg/pgoapi/releases",
+    url='https://github.com/sebastienvercammen/pgoapi',
+    download_url="https://github.com/sebastienvercammen/pgoapi/releases",
     packages=find_packages(),
     install_requires=reqs)
