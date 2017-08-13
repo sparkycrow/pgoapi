@@ -21,13 +21,13 @@ Author: tjado <https://github.com/tejado>
 
 import time
 import struct
+import random
 import logging
 
 from json import JSONEncoder
 from binascii import unhexlify
 
 # other stuff
-from google.protobuf.internal import encoder
 from geopy.geocoders import GoogleV3
 from s2sphere import LatLng, Angle, Cap, RegionCoverer, math
 
@@ -117,3 +117,14 @@ def parse_api_endpoint(api_url):
         api_url = 'https://{}/rpc'.format(api_url)
 
     return api_url
+
+
+def weighted_choice(choices):
+    total = sum(w for c, w in choices)
+    r = random.uniform(0, total)
+    upto = 0
+    for c, w in choices:
+        if upto + w >= r:
+            return c
+        upto += w
+    assert False, "Shouldn't get here"

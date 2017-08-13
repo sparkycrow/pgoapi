@@ -38,8 +38,8 @@ from google.protobuf import message
 from protobuf_to_dict import protobuf_to_dict
 from pycrypt import pycrypt
 
-from pgoapi.exceptions import AuthTokenExpiredException, BadRequestException, MalformedNianticResponseException, NianticIPBannedException, NianticOfflineException, NianticThrottlingException, NianticTimeoutException, NotLoggedInException, ServerApiEndpointRedirectException, UnexpectedResponseException
-from pgoapi.utilities import to_camel_case, get_time, get_format_time_diff
+from pgoapi.exceptions import (AuthTokenExpiredException, BadRequestException, MalformedNianticResponseException, NianticIPBannedException, NianticOfflineException, NianticThrottlingException, NianticTimeoutException, NotLoggedInException, ServerApiEndpointRedirectException, UnexpectedResponseException)
+from pgoapi.utilities import to_camel_case, get_time, get_format_time_diff, weighted_choice
 from pgoapi.hash_server import HashServer
 
 from . import protos
@@ -53,7 +53,7 @@ from pogoprotos.networking.platform.requests.unknown_ptr8_request_pb2 import Unk
 
 
 class RpcApi:
-    def __init__(self, auth_provider, device_info, request_id, start_time):
+    def __init__(self, auth_provider, device_info, state, request_id, start_time):
 
         self.log = logging.getLogger(__name__)
 
@@ -66,10 +66,10 @@ class RpcApi:
         self.request_proto = None
 
         # data fields for SignalAgglom
-        self.session_hash = os.urandom(16)
         self.token2 = random.randint(1, 59)
         self.course = random.uniform(0, 360)
 
+        self.state = state
         self.device_info = device_info
 
     def activate_hash_server(self, auth_token):
@@ -183,8 +183,16 @@ class RpcApi:
         request = RequestEnvelope()
         request.status_code = 2
         request.request_id = self.request_id
-        request.accuracy = random.choice((5, 5, 5, 5, 10, 10, 10, 30, 30, 50,
-                                          65, random.uniform(66, 80)))
+        # 5: 43%, 10: 30%, 30: 5%, 50: 4%, 65: 10%, 200: 1%, float: 7%
+        request.accuracy = weighted_choice([
+            (5, 43),
+            (10, 30),
+            (30, 5),
+            (50, 4),
+            (65, 10),
+            (200, 1),
+            (random.uniform(65, 200), 7)
+        ])
 
         if player_position:
             request.latitude, request.longitude, altitude = player_position
@@ -203,20 +211,18 @@ class RpcApi:
         else:
             self.log.debug(
                 'No Session Ticket found - using OAUTH Access Token')
-            request.auth_info.provider = self._auth_provider.get_name()
-            request.auth_info.token.contents = self._auth_provider.get_access_token(
-            )
+            auth_provider = self._auth_provider
+            request.auth_info.provider = auth_provider.get_name()
+            request.auth_info.token.contents = auth_provider.get_access_token()
             request.auth_info.token.unknown2 = self.token2
-            ticket_serialized = request.auth_info.SerializeToString(
-            )  #Sig uses this when no auth_ticket available
+            # Sig uses this when no auth_ticket available.
+            ticket_serialized = request.auth_info.SerializeToString()
 
         sig = Signature()
 
-        sig.session_hash = self.session_hash
+        sig.session_hash = self.state.session_hash
         sig.timestamp = get_time(ms=True)
         sig.timestamp_since_start = get_time(ms=True) - self.start_time
-        if sig.timestamp_since_start < 5000:
-            sig.timestamp_since_start = random.randint(5000, 8000)
 
         self._hash_engine.hash(sig.timestamp, request.latitude,
                                request.longitude, request.accuracy,
@@ -230,57 +236,91 @@ class RpcApi:
         loc = sig.location_fix.add()
         sen = sig.sensor_info.add()
 
-        sen.timestamp_snapshot = random.randint(
-            sig.timestamp_since_start - 5000, sig.timestamp_since_start - 100)
-        loc.timestamp_snapshot = random.randint(
-            sig.timestamp_since_start - 5000, sig.timestamp_since_start - 1000)
+        sen.timestamp_snapshot = sig.timestamp_since_start - int(random.triangular(93, 4900, 3000))
+        loc.timestamp_snapshot = sig.timestamp_since_start - int(random.triangular(320, 3000, 1000))
 
-        loc.provider = random.choice(('network', 'network', 'network',
-                                      'network', 'fused'))
+        loc.provider = 'fused'
         loc.latitude = request.latitude
         loc.longitude = request.longitude
 
-        loc.altitude = altitude or random.triangular(300, 400, 350)
+        loc.altitude = altitude or random.uniform(150, 250)
 
-        if random.random() > .95:
-            # no reading for roughly 1 in 20 updates
+        if random.random() > .85:
+            # no reading for roughly 1 in 7 updates
             loc.course = -1
             loc.speed = -1
         else:
-            self.course = random.triangular(0, 360, self.course)
-            loc.course = self.course
-            loc.speed = random.triangular(0.2, 4.25, 1)
+            loc.course = self.state.course
+            loc.speed = random.triangular(0.25, 9.7, 8.2)
 
         loc.provider_status = 3
         loc.location_type = 1
-        if request.accuracy >= 65:
-            loc.vertical_accuracy = random.triangular(35, 100, 65)
-            loc.horizontal_accuracy = random.choice(
-                (request.accuracy, 65, 65, random.uniform(66, 80), 200))
+        if isinstance(request.accuracy, float):
+            loc.horizontal_accuracy = weighted_choice([
+                (request.accuracy, 50),
+                (65, 40),
+                (200, 10)
+            ])
+            loc.vertical_accuracy = weighted_choice([
+                (random.uniform(10, 96), 50),
+                (10, 34),
+                (12, 5),
+                (16, 3),
+                (24, 4),
+                (32, 2),
+                (48, 1),
+                (96, 1)
+            ])
         else:
-            if request.accuracy > 10:
-                loc.vertical_accuracy = random.choice((24, 32, 48, 48, 64, 64,
-                                                       96, 128))
-            else:
-                loc.vertical_accuracy = random.choice((3, 4, 6, 6, 8, 12, 24))
             loc.horizontal_accuracy = request.accuracy
+            if request.accuracy >= 10:
+                loc.vertical_accuracy = weighted_choice([
+                    (6, 4),
+                    (8, 34),
+                    (10, 35),
+                    (12, 11),
+                    (16, 4),
+                    (24, 8),
+                    (32, 3),
+                    (48, 1)
+                ])
+            else:
+                loc.vertical_accuracy = weighted_choice([
+                    (3, 15),
+                    (4, 39),
+                    (6, 14),
+                    (8, 13),
+                    (10, 14),
+                    (12, 5)
+                ])
 
-        sen.linear_acceleration_x = random.triangular(-3, 1, 0)
-        sen.linear_acceleration_y = random.triangular(-2, 3, 0)
-        sen.linear_acceleration_z = random.triangular(-4, 2, 0)
-        sen.magnetic_field_x = random.triangular(-50, 50, 0)
-        sen.magnetic_field_y = random.triangular(-60, 50, -5)
-        sen.magnetic_field_z = random.triangular(-60, 40, -30)
-        sen.magnetic_field_accuracy = random.choice((-1, 1, 1, 2, 2, 2, 2))
-        sen.attitude_pitch = random.triangular(-1.5, 1.5, 0.2)
-        sen.attitude_yaw = random.uniform(-3, 3)
-        sen.attitude_roll = random.triangular(-2.8, 2.5, 0.25)
-        sen.rotation_rate_x = random.triangular(-6, 4, 0)
-        sen.rotation_rate_y = random.triangular(-5.5, 5, 0)
-        sen.rotation_rate_z = random.triangular(-5, 3, 0)
-        sen.gravity_x = random.triangular(-1, 1, 0.15)
-        sen.gravity_y = random.triangular(-1, 1, -.2)
-        sen.gravity_z = random.triangular(-1, .7, -0.8)
+        sen.magnetic_field_accuracy = weighted_choice([
+            (-1, 8),
+            (0, 2),
+            (1, 42),
+            (2, 48)
+        ])
+        if sen.magnetic_field_accuracy == -1:
+            sen.magnetic_field_x = 0
+            sen.magnetic_field_y = 0
+            sen.magnetic_field_z = 0
+        else:
+            sen.magnetic_field_x = self.state.magnetic_field_x
+            sen.magnetic_field_y = self.state.magnetic_field_y
+            sen.magnetic_field_z = self.state.magnetic_field_z
+
+        sen.linear_acceleration_x = random.triangular(-1.5, 2.5, 0)
+        sen.linear_acceleration_y = random.triangular(-1.2, 1.4, 0)
+        sen.linear_acceleration_z = random.triangular(-1.4, .9, 0)
+        sen.attitude_pitch = random.triangular(-1.56, 1.57, 0.475)
+        sen.attitude_yaw = random.triangular(-1.56, 3.14, .1)
+        sen.attitude_roll = random.triangular(-3.14, 3.14, 0)
+        sen.rotation_rate_x = random.triangular(-3.2, 3.52, 0)
+        sen.rotation_rate_y = random.triangular(-3.1, 4.88, 0)
+        sen.rotation_rate_z = random.triangular(-6, 3.7, 0)
+        sen.gravity_x = random.triangular(-1, 1, 0.01)
+        sen.gravity_y = random.triangular(-1, 1, -.4)
+        sen.gravity_z = random.triangular(-1, 1, -.4)
         sen.status = 3
 
         sig.unknown25 = 0x4AE22D4661C83701
@@ -309,8 +349,7 @@ class RpcApi:
         plat.type = 6
         plat.request_message = sig_request.SerializeToString()
 
-        request.ms_since_last_locationfix = int(
-            random.triangular(300, 30000, 10000))
+        request.ms_since_last_locationfix = sig.timestamp_since_start - loc.timestamp_snapshot
 
         self.log.debug('Generated protobuf request: \n\r%s', request)
 
@@ -390,7 +429,7 @@ class RpcApi:
                     except Exception as e:
                         self.log.warning(
                             'Argument %s with value %s unknown inside %s (Exception: %s)',
-                            key, i, proto_name, e)
+                            key, i, proto_classname, e)
             elif isinstance(value, dict):
                 for k in value.keys():
                     try:
@@ -399,7 +438,7 @@ class RpcApi:
                     except Exception as e:
                         self.log.warning(
                             'Argument %s with value %s unknown inside %s (Exception: %s)',
-                            key, str(value), proto_name, e)
+                            key, str(value), proto_classname, e)
             else:
                 try:
                     setattr(proto, key, value)
@@ -411,7 +450,7 @@ class RpcApi:
                     except Exception as e:
                         self.log.warning(
                             'Argument %s with value %s unknown inside %s (Exception: %s)',
-                            key, value, proto_name, e)
+                            key, value, proto_classname, e)
 
         return proto.SerializeToString()
 
@@ -470,7 +509,7 @@ class RpcApi:
         response_proto_dict = self._parse_sub_responses(
             response_proto, subrequests, response_proto_dict, use_dict)
 
-        #It can't be done before
+        # It can't be done before.
         if not use_dict:
             del response_proto_dict['envelope'].returns[:]
 
@@ -501,7 +540,7 @@ class RpcApi:
             subresponse_return = None
             try:
                 subresponse_extension = self.get_class(proto_classname)()
-            except Exception as e:
+            except Exception:
                 subresponse_extension = None
                 error = 'Protobuf definition for {} not found'.format(
                     proto_classname)
@@ -527,3 +566,33 @@ class RpcApi:
             i += 1
 
         return response_proto_dict
+
+
+# Original by Noctem.
+class RpcState:
+    def __init__(self):
+        self.session_hash = os.urandom(16)
+        self.mag_x_min = random.uniform(-80, 60)
+        self.mag_x_max = self.mag_x_min + 20
+        self.mag_y_min = random.uniform(-120, 90)
+        self.mag_y_max = self.mag_y_min + 30
+        self.mag_z_min = random.uniform(-70, 40)
+        self.mag_z_max = self.mag_y_min + 15
+        self._course = random.uniform(0, 359.99)
+
+    @property
+    def magnetic_field_x(self):
+        return random.uniform(self.mag_x_min, self.mag_x_max)
+
+    @property
+    def magnetic_field_y(self):
+        return random.uniform(self.mag_y_min, self.mag_y_max)
+
+    @property
+    def magnetic_field_z(self):
+        return random.uniform(self.mag_z_min, self.mag_z_max)
+
+    @property
+    def course(self):
+        self._course = random.triangular(0, 359.99, self._course)
+        return self._course

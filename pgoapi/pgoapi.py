@@ -30,7 +30,7 @@ import requests
 import time
 
 from . import __title__, __version__, __copyright__
-from pgoapi.rpc_api import RpcApi
+from pgoapi.rpc_api import RpcApi, RpcState
 from pgoapi.auth_ptc import AuthPtc
 from pgoapi.auth_google import AuthGoogle
 from pgoapi.utilities import parse_api_endpoint, get_time
@@ -84,6 +84,7 @@ class PGoApi:
             self._session.proxies = proxy_config
 
         self.device_info = device_info
+        self.state = RpcState()
 
     def set_logger(self, logger=None):
         self.log = logger or logging.getLogger(__name__)
@@ -274,6 +275,7 @@ class PGoApiRequest:
         self.log = logging.getLogger(__name__)
 
         self.__parent__ = parent
+        self.state = parent.state
         """ Inherit necessary parameters from parent """
         self._api_endpoint = parent.get_api_endpoint()
         self._auth_provider = parent.get_auth_provider()
@@ -295,7 +297,7 @@ class PGoApiRequest:
             raise NotLoggedInException
 
         api = self.__parent__
-        request = RpcApi(self._auth_provider, self.device_info,
+        request = RpcApi(self._auth_provider, self.device_info, self.state,
                          api.get_next_request_id(), api.get_start_time())
         request._session = api._session
 
