@@ -33,7 +33,7 @@ from . import __title__, __version__, __copyright__
 from pgoapi.rpc_api import RpcApi
 from pgoapi.auth_ptc import AuthPtc
 from pgoapi.auth_google import AuthGoogle
-from pgoapi.utilities import parse_api_endpoint
+from pgoapi.utilities import parse_api_endpoint, get_time
 from pgoapi.exceptions import AuthException, AuthTokenExpiredException, BadRequestException, BannedAccountException, InvalidCredentialsException, NoPlayerPositionSetException, NotLoggedInException, ServerApiEndpointRedirectException, ServerBusyOrOfflineException, UnexpectedResponseException
 
 from . import protos
@@ -54,6 +54,10 @@ class PGoApi:
                  position_alt=None,
                  proxy_config=None,
                  device_info=None):
+        self.RPC_ID_LOW = 1
+        self.RPC_ID_HIGH = 1
+        self.START_TIME = get_time(ms=True)
+
         self.set_logger()
         self.log.info('%s v%s - %s', __title__, __version__, __copyright__)
 
@@ -159,6 +163,16 @@ class PGoApi:
     def get_hash_server_token(self):
         return self._hash_server_token
 
+    def get_next_request_id(self):
+        self.RPC_ID_LOW += 1
+        self.RPC_ID_HIGH = ((7**5) * self.RPC_ID_HIGH) % ((2**31) - 1)
+        reqid = (self.RPC_ID_HIGH << 32) | self.RPC_ID_LOW
+        self.log.debug('RPC Request ID: %s.', reqid)
+        return reqid
+
+    def get_start_time(self):
+        return self.START_TIME
+
     def __getattr__(self, func):
         def function(**kwargs):
             request = self.create_request()
@@ -261,8 +275,8 @@ class PGoApiRequest:
 
         self.__parent__ = parent
         """ Inherit necessary parameters from parent """
-        self._api_endpoint = self.__parent__.get_api_endpoint()
-        self._auth_provider = self.__parent__.get_auth_provider()
+        self._api_endpoint = parent.get_api_endpoint()
+        self._auth_provider = parent.get_auth_provider()
 
         self._position_lat = position_lat
         self._position_lng = position_lng
@@ -280,10 +294,12 @@ class PGoApiRequest:
             self.log.info('Not logged in')
             raise NotLoggedInException
 
-        request = RpcApi(self._auth_provider, self.device_info)
-        request._session = self.__parent__._session
+        api = self.__parent__
+        request = RpcApi(self._auth_provider, self.device_info,
+                         api.get_next_request_id(), api.get_start_time())
+        request._session = api._session
 
-        hash_server_token = self.__parent__.get_hash_server_token()
+        hash_server_token = api.get_hash_server_token()
         request.activate_hash_server(hash_server_token)
 
         response = None
@@ -318,7 +334,7 @@ class PGoApiRequest:
                 new_api_endpoint = e.get_redirected_endpoint()
 
                 self._api_endpoint = parse_api_endpoint(new_api_endpoint)
-                self.__parent__.set_api_endpoint(self._api_endpoint)
+                api.set_api_endpoint(self._api_endpoint)
 
                 execute = True  # reexecute the call
 

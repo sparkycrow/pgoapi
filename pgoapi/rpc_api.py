@@ -53,22 +53,17 @@ from pogoprotos.networking.platform.requests.unknown_ptr8_request_pb2 import Unk
 
 
 class RpcApi:
-
-    RPC_ID = 0
-    START_TIME = 0
-
-    def __init__(self, auth_provider, device_info):
+    def __init__(self, auth_provider, device_info, request_id, start_time):
 
         self.log = logging.getLogger(__name__)
 
         self._auth_provider = auth_provider
+        self.request_id = request_id
+        self.start_time = start_time
 
         # mystical unknown6 - resolved by PokemonGoDev
         self._hash_engine = None
         self.request_proto = None
-
-        if RpcApi.START_TIME == 0:
-            RpcApi.START_TIME = get_time(ms=True)
 
         # data fields for SignalAgglom
         self.session_hash = os.urandom(16)
@@ -79,23 +74,6 @@ class RpcApi:
 
     def activate_hash_server(self, auth_token):
         self._hash_engine = HashServer(auth_token)
-
-    def get_rpc_id(self):
-        if RpcApi.RPC_ID == 0:  #Startup
-            RpcApi.RPC_ID = 1
-            if self.device_info is not None  and  \
-               self.device_info.get('device_brand','Apple')!='Apple':
-                rand = 0x53B77E48
-            else:
-                rand = 0x000041A7
-        else:
-            rand = random.randint(0, 2**31)
-        RpcApi.RPC_ID += 1
-        cnt = RpcApi.RPC_ID
-        reqid = ((rand | ((cnt & 0xFFFFFFFF) >> 31)) << 32) | cnt
-        self.log.debug("Incremented RPC Request ID: %s", reqid)
-
-        return reqid
 
     def decode_raw(self, raw):
         output = error = None
@@ -204,7 +182,7 @@ class RpcApi:
 
         request = RequestEnvelope()
         request.status_code = 2
-        request.request_id = self.get_rpc_id()
+        request.request_id = self.request_id
         request.accuracy = random.choice((5, 5, 5, 5, 10, 10, 10, 30, 30, 50,
                                           65, random.uniform(66, 80)))
 
@@ -236,7 +214,7 @@ class RpcApi:
 
         sig.session_hash = self.session_hash
         sig.timestamp = get_time(ms=True)
-        sig.timestamp_since_start = get_time(ms=True) - RpcApi.START_TIME
+        sig.timestamp_since_start = get_time(ms=True) - self.start_time
         if sig.timestamp_since_start < 5000:
             sig.timestamp_since_start = random.randint(5000, 8000)
 
