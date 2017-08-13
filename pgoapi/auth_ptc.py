@@ -38,6 +38,7 @@ from pgoapi.exceptions import AuthException, AuthTimeoutException, InvalidCreden
 
 from requests.exceptions import RequestException, Timeout
 
+
 class AuthPtc(Auth):
 
     PTC_LOGIN_URL1 = 'https://sso.pokemon.com/sso/oauth2.0/authorize?client_id=mobile-app_pokemon-go&redirect_uri=https%3A%2F%2Fwww.nianticlabs.com%2Fpokemongo%2Ferror'
@@ -45,13 +46,24 @@ class AuthPtc(Auth):
     PTC_LOGIN_OAUTH = 'https://sso.pokemon.com/sso/oauth2.0/accessToken'
     PTC_LOGIN_CLIENT_SECRET = 'w8ScCUXJQc6kXKw8FiOhd8Fixzht18Dq3PEVkUCP5ZPxtgyWsbTvWHFLm2wNY0JR'
 
-    def __init__(self, username=None, password=None, user_agent=None, timeout=None):
+    def __init__(self,
+                 username=None,
+                 password=None,
+                 user_agent=None,
+                 timeout=None):
         Auth.__init__(self)
 
         self._auth_provider = 'ptc'
 
         self._session = requests.session()
-        self._session.headers = {'User-Agent': user_agent or 'pokemongo/1 CFNetwork/811.4.18 Darwin/16.5.0', 'Host': 'sso.pokemon.com', 'X-Unity-Version': '5.5.1f1'}
+        self._session.headers = {
+            'User-Agent':
+            user_agent or 'pokemongo/1 CFNetwork/811.4.18 Darwin/16.5.0',
+            'Host':
+            'sso.pokemon.com',
+            'X-Unity-Version':
+            '5.5.1f1'
+        }
         self._username = username
         self._password = password
         self.timeout = timeout or 15
@@ -62,8 +74,10 @@ class AuthPtc(Auth):
     def user_login(self, username=None, password=None, retry=True):
         self._username = username or self._username
         self._password = password or self._password
-        if not isinstance(self._username, string_types) or not isinstance(self._password, string_types):
-            raise InvalidCredentialsException("Username/password not correctly specified")
+        if not isinstance(self._username, string_types) or not isinstance(
+                self._password, string_types):
+            raise InvalidCredentialsException(
+                "Username/password not correctly specified")
 
         self.log.info('PTC User Login for: {}'.format(self._username))
         self._session.cookies.clear()
@@ -84,11 +98,16 @@ class AuthPtc(Auth):
                 'password': self._password,
             })
         except (ValueError, AttributeError) as e:
-            self.log.error('PTC User Login Error - invalid JSON response: {}'.format(e))
+            self.log.error(
+                'PTC User Login Error - invalid JSON response: {}'.format(e))
             raise AuthException('Invalid JSON response: {}'.format(e))
 
         try:
-            r = self._session.post(self.PTC_LOGIN_URL2, data=data, timeout=self.timeout, allow_redirects=False)
+            r = self._session.post(
+                self.PTC_LOGIN_URL2,
+                data=data,
+                timeout=self.timeout,
+                allow_redirects=False)
         except Timeout:
             raise AuthTimeoutException('Auth POST timed out.')
         except RequestException as e:
@@ -137,7 +156,8 @@ class AuthPtc(Auth):
             }
 
             try:
-                r = self._session.post(self.PTC_LOGIN_OAUTH, data=data, timeout=self.timeout)
+                r = self._session.post(
+                    self.PTC_LOGIN_OAUTH, data=data, timeout=self.timeout)
             except Timeout:
                 raise AuthTimeoutException('Auth POST timed out.')
             except RequestException as e:
@@ -162,11 +182,14 @@ class AuthPtc(Auth):
                 self._login = True
 
                 self.log.info('PTC Access Token successfully retrieved.')
-                self.log.debug('PTC Access Token: {}'.format(self._access_token))
+                self.log.debug(
+                    'PTC Access Token: {}'.format(self._access_token))
             else:
                 self._access_token = None
                 self._login = False
                 if force_refresh:
-                    self.log.info('Reauthenticating with refresh token failed, using credentials instead.')
+                    self.log.info(
+                        'Reauthenticating with refresh token failed, using credentials instead.'
+                    )
                     return self.user_login(retry=False)
                 raise AuthException("Could not retrieve a PTC Access Token")
