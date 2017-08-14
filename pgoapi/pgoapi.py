@@ -25,9 +25,10 @@ Author: tjado <https://github.com/tejado>
 
 from __future__ import absolute_import
 
+import time
+import random
 import logging
 import requests
-import time
 
 from . import __title__, __version__, __copyright__
 from pgoapi.rpc_api import RpcApi, RpcState
@@ -56,7 +57,7 @@ class PGoApi:
                  device_info=None):
         self.RPC_ID_LOW = 1
         self.RPC_ID_HIGH = 1
-        self.START_TIME = get_time(ms=True)
+        self.START_TIME = get_time(ms=True) - random.randint(6000, 10000)
 
         self.set_logger()
         self.log.info('%s v%s - %s', __title__, __version__, __copyright__)
