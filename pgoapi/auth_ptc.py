@@ -41,32 +41,38 @@ from requests.exceptions import RequestException, Timeout
 
 class AuthPtc(Auth):
 
-    PTC_LOGIN_URL1 = 'https://sso.pokemon.com/sso/oauth2.0/authorize?client_id=mobile-app_pokemon-go&redirect_uri=https%3A%2F%2Fwww.nianticlabs.com%2Fpokemongo%2Ferror'
-    PTC_LOGIN_URL2 = 'https://sso.pokemon.com/sso/login?service=http%3A%2F%2Fsso.pokemon.com%2Fsso%2Foauth2.0%2FcallbackAuthorize'
+    PTC_LOGIN_URL1_GET = 'https://sso.pokemon.com/sso/oauth2.0/authorize'
+    PTC_LOGIN_URL2_POST = 'https://sso.pokemon.com/sso/login'
     PTC_LOGIN_OAUTH = 'https://sso.pokemon.com/sso/oauth2.0/accessToken'
+    PTC_LOGIN_PROFILE = 'https://sso.pokemon.com/sso/oauth2.0/profile'
     PTC_LOGIN_CLIENT_SECRET = 'w8ScCUXJQc6kXKw8FiOhd8Fixzht18Dq3PEVkUCP5ZPxtgyWsbTvWHFLm2wNY0JR'
 
     def __init__(self,
                  username=None,
                  password=None,
                  user_agent=None,
-                 timeout=None):
+                 timeout=None,
+                 locale=None):
         Auth.__init__(self)
 
         self._auth_provider = 'ptc'
-
-        self._session = requests.session()
-        self._session.headers = {
-            'User-Agent':
-            user_agent or 'pokemongo/1 CFNetwork/811.4.18 Darwin/16.5.0',
-            'Host':
-            'sso.pokemon.com',
-            'X-Unity-Version':
-            '5.5.1f1'
-        }
         self._username = username
         self._password = password
         self.timeout = timeout or 15
+        self.locale = locale or 'en_US'
+        self.user_agent = user_agent or 'pokemongo/1 CFNetwork/811.5.4 Darwin/16.7.0'
+
+        # Prepare headers.
+        self._session = requests.session()
+        self._session.headers = {
+            'User-Agent': self.user_agent,
+            'Host': 'sso.pokemon.com',
+            'Connection': 'keep-alive',
+            'Accept': '*/*',
+            'Accept-Language': self.locale.lower().replace('_', '-'),
+            'Accept-Encoding': 'gzip, deflate',
+            'X-Unity-Version': '5.5.1f1'
+        }
 
     def set_proxy(self, proxy_config):
         self._session.proxies = proxy_config
@@ -83,14 +89,24 @@ class AuthPtc(Auth):
         self._session.cookies.clear()
         now = get_time()
 
+        get_params = {
+            'client_id': 'mobile-app_pokemon-go',
+            'redirect_uri': 'https://www.nianticlabs.com/pokemongo/error',
+            'locale': self.locale
+        }
+
         try:
-            r = self._session.get(self.PTC_LOGIN_URL1, timeout=self.timeout)
+            r = self._session.get(
+                self.PTC_LOGIN_URL1_GET,
+                params=get_params,
+                timeout=self.timeout)
         except Timeout:
             raise AuthTimeoutException('Auth GET timed out.')
         except RequestException as e:
             raise AuthException('Caught RequestException: {}'.format(e))
 
         try:
+            # Consumes response, so connection is released to pool.
             data = r.json()
             data.update({
                 '_eventId': 'submit',
@@ -102,10 +118,19 @@ class AuthPtc(Auth):
                 'PTC User Login Error - invalid JSON response: {}'.format(e))
             raise AuthException('Invalid JSON response: {}'.format(e))
 
+        post_params = {
+            'locale': self.locale,
+            'service': 'http://sso.pokemon.com/sso/oauth2.0/callbackAuthorize'
+        }
+
+        post_headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+
         try:
             r = self._session.post(
-                self.PTC_LOGIN_URL2,
+                self.PTC_LOGIN_URL2_POST,
                 data=data,
+                params=post_params,
+                headers=post_headers,
                 timeout=self.timeout,
                 allow_redirects=False)
         except Timeout:
@@ -118,6 +143,9 @@ class AuthPtc(Auth):
             self._refresh_token = qs.get('ticket')[0]
         except Exception as e:
             raise AuthException('Could not retrieve token! {}'.format(e))
+
+        # We don't consume the response, so explicitly release connection.
+        r.close()
 
         self._access_token = self._session.cookies.get('CASTGC')
         if self._access_token:
@@ -155,24 +183,30 @@ class AuthPtc(Auth):
                 'code': self._refresh_token,
             }
 
+            post_headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+
             try:
                 r = self._session.post(
-                    self.PTC_LOGIN_OAUTH, data=data, timeout=self.timeout)
+                    self.PTC_LOGIN_OAUTH,
+                    data=data,
+                    headers=post_headers,
+                    timeout=self.timeout)
             except Timeout:
                 raise AuthTimeoutException('Auth POST timed out.')
             except RequestException as e:
                 raise AuthException('Caught RequestException: {}'.format(e))
 
+            # Consumes response, so connection is released to pool.
             token_data = parse_qs(r.text)
 
             access_token = token_data.get('access_token')
             if access_token is not None:
                 self._access_token = access_token[0]
 
-                # set expiration to an hour less than value received because Pokemon OAuth
+                # Set expiration to an hour less than value received because Pokemon OAuth
                 # login servers return an access token with an explicit expiry time of
                 # three hours, however, the token stops being valid after two hours.
-                # See issue #86
+                # See issue #86.
                 expires = int(token_data.get('expires', [0])[0]) - 3600
                 if expires > 0:
                     self._access_token_expiry = expires + get_time()
@@ -184,6 +218,31 @@ class AuthPtc(Auth):
                 self.log.info('PTC Access Token successfully retrieved.')
                 self.log.debug(
                     'PTC Access Token: {}'.format(self._access_token))
+
+                # Last request is a profile request.
+                data = {
+                    'access_token': self._access_token,
+                    'client_id': 'mobile-app_pokemon-go',
+                    'locale': self.locale
+                }
+
+                post_headers = {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                }
+
+                try:
+                    r = self._session.post(
+                        self.PTC_LOGIN_PROFILE,
+                        data=data,
+                        headers=post_headers,
+                        timeout=self.timeout)
+
+                    # We don't consume the response, so explicitly release connection.
+                    r.close()
+                except Timeout:
+                    raise AuthTimeoutException('Auth profile POST timed out.')
+                except RequestException as e:
+                    raise AuthException('Caught RequestException: {}'.format(e))
             else:
                 self._access_token = None
                 self._login = False

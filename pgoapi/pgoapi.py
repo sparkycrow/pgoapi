@@ -69,7 +69,7 @@ class PGoApi:
             self.set_authentication(provider, oauth2_refresh_token, username,
                                     password, proxy_config)
 
-        self.set_api_endpoint("pgorelease.nianticlabs.com/plfe")
+        self.set_api_endpoint('pgorelease.nianticlabs.com/plfe')
 
         self._position_lat = position_lat
         self._position_lng = position_lng
@@ -78,7 +78,15 @@ class PGoApi:
         self._hash_server_token = None
 
         self._session = requests.session()
-        self._session.headers.update({'User-Agent': 'Niantic App'})
+
+        # requests' Session calls .default_headers() in init, which
+        # makes it set a bunch of default headers, including
+        # 'Connection': 'keep-alive', so we overwrite all of them.
+        self._session.headers = {
+            'User-Agent': 'Niantic App',
+            'Content-Type': 'application/binary',
+            'Accept-Encoding': 'identity, gzip'
+        }
         self._session.verify = True
 
         if proxy_config is not None:
@@ -101,10 +109,10 @@ class PGoApi:
                            password=None,
                            proxy_config=None,
                            user_agent=None,
-                           timeout=None):
+                           timeout=None,
+                           locale=None):
         if provider == 'ptc':
-            self._auth_provider = AuthPtc(
-                user_agent=user_agent, timeout=timeout)
+            self._auth_provider = AuthPtc(user_agent=user_agent, timeout=timeout, locale=locale)
         elif provider == 'google':
             self._auth_provider = AuthGoogle()
         elif provider is None:
