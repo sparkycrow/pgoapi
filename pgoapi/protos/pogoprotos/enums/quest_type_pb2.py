@@ -2,8 +2,7 @@
 # source: pogoprotos/enums/quest_type.proto
 
 import sys
-_b = sys.version_info[0] < 3 and (lambda x: x) or (
-    lambda x: x.encode('latin1'))
+_b=sys.version_info[0]<3 and (lambda x:x) or (lambda x:x.encode('latin1'))
 from google.protobuf.internal import enum_type_wrapper
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
@@ -14,44 +13,41 @@ from google.protobuf import descriptor_pb2
 
 _sym_db = _symbol_database.Default()
 
+
+
+
 DESCRIPTOR = _descriptor.FileDescriptor(
-    name='pogoprotos/enums/quest_type.proto',
-    package='pogoprotos.enums',
-    syntax='proto3',
-    serialized_pb=_b(
-        '\n!pogoprotos/enums/quest_type.proto\x12\x10pogoprotos.enums*j\n\tQuestType\x12\x16\n\x12QUEST_UNKNOWN_TYPE\x10\x00\x12 \n\x1cQUEST_FIRST_CATCH_OF_THE_DAY\x10\x01\x12#\n\x1fQUEST_FIRST_POKESTOP_OF_THE_DAY\x10\x02\x62\x06proto3'
-    ))
+  name='pogoprotos/enums/quest_type.proto',
+  package='pogoprotos.enums',
+  syntax='proto3',
+  serialized_pb=_b('\n!pogoprotos/enums/quest_type.proto\x12\x10pogoprotos.enums*j\n\tQuestType\x12\x16\n\x12QUEST_UNKNOWN_TYPE\x10\x00\x12 \n\x1cQUEST_FIRST_CATCH_OF_THE_DAY\x10\x01\x12#\n\x1fQUEST_FIRST_POKESTOP_OF_THE_DAY\x10\x02\x62\x06proto3')
+)
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
 _QUESTTYPE = _descriptor.EnumDescriptor(
-    name='QuestType',
-    full_name='pogoprotos.enums.QuestType',
-    filename=None,
-    file=DESCRIPTOR,
-    values=[
-        _descriptor.EnumValueDescriptor(
-            name='QUEST_UNKNOWN_TYPE',
-            index=0,
-            number=0,
-            options=None,
-            type=None),
-        _descriptor.EnumValueDescriptor(
-            name='QUEST_FIRST_CATCH_OF_THE_DAY',
-            index=1,
-            number=1,
-            options=None,
-            type=None),
-        _descriptor.EnumValueDescriptor(
-            name='QUEST_FIRST_POKESTOP_OF_THE_DAY',
-            index=2,
-            number=2,
-            options=None,
-            type=None),
-    ],
-    containing_type=None,
-    options=None,
-    serialized_start=55,
-    serialized_end=161, )
+  name='QuestType',
+  full_name='pogoprotos.enums.QuestType',
+  filename=None,
+  file=DESCRIPTOR,
+  values=[
+    _descriptor.EnumValueDescriptor(
+      name='QUEST_UNKNOWN_TYPE', index=0, number=0,
+      options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='QUEST_FIRST_CATCH_OF_THE_DAY', index=1, number=1,
+      options=None,
+      type=None),
+    _descriptor.EnumValueDescriptor(
+      name='QUEST_FIRST_POKESTOP_OF_THE_DAY', index=2, number=2,
+      options=None,
+      type=None),
+  ],
+  containing_type=None,
+  options=None,
+  serialized_start=55,
+  serialized_end=161,
+)
 _sym_db.RegisterEnumDescriptor(_QUESTTYPE)
 
 QuestType = enum_type_wrapper.EnumTypeWrapper(_QUESTTYPE)
@@ -59,6 +55,8 @@ QUEST_UNKNOWN_TYPE = 0
 QUEST_FIRST_CATCH_OF_THE_DAY = 1
 QUEST_FIRST_POKESTOP_OF_THE_DAY = 2
 
+
 DESCRIPTOR.enum_types_by_name['QuestType'] = _QUESTTYPE
+
 
 # @@protoc_insertion_point(module_scope)
