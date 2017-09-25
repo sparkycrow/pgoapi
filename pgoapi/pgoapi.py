@@ -100,7 +100,7 @@ class PGoApi:
 
     @staticmethod
     def get_api_version():
-        return 7301
+        return 7500
 
     def set_authentication(self,
                            provider=None,
